@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import numpy as np
 
 
@@ -19,35 +18,31 @@ def load_data():
     return monthly_df
 
 
-def main():
-    st.set_page_config(layout="wide")
-    st.title("COVID-19 Monthly New Cases World Map")
-
-    covid_df = load_data()
-
-    min_month = covid_df['month'].min().date().replace(day=1)
-    max_month = covid_df['month'].max().date().replace(day=1)
-
+def setup_slider(min_month, max_month):
     selected_month = st.slider(
         "Select a month",
         min_value=min_month,
         max_value=max_month,
         value=min_month,
-        format="YYYY-MM"
+        format="YYYY-MM",
     )
+    
+    return selected_month
 
-    filtered_df = covid_df[covid_df['month'].dt.to_period('M') == pd.Period(selected_month, freq='M')]
 
-    filtered_df['new_cases_filled'] = filtered_df['new_cases'].fillna(0)
+def summary_data(filtered_df, selected_month):
+    # Dashboard for showing summary data
+    st.subheader(f"New Cases Data for {selected_month.strftime('%B %Y')}")
+    st.dataframe(filtered_df[['location', 'new_cases_per_month']].sort_values('new_cases_per_month', ascending=False))
+    st.subheader("Summary Statistics")
+    st.write(f"Total New Cases: {filtered_df['new_cases_per_month'].sum():,.0f}")
+    st.write(f"Average New Cases per Country: {filtered_df['new_cases_per_month'].mean():,.2f}")
+    st.write(f"Median New Cases: {filtered_df['new_cases_per_month'].median():,.0f}")
+    st.write(f"Maximum New Cases: {filtered_df['new_cases_per_month'].max():,.0f}")
 
-    filtered_df['new_cases_log'] = np.log1p(filtered_df['new_cases_filled'])
 
-    max_cases = filtered_df['new_cases_filled'].max() if filtered_df['new_cases_filled'].max() > 100_000 else 100_000
-    bins = [0, 1000, 10000, 50000, max_cases]
-    labels = [10, 20, 30, 40]  
-
-    filtered_df['circle_size'] = pd.cut(filtered_df['new_cases_filled'], bins=bins, labels=labels, include_lowest=True)
-
+def main_map(filtered_df, selected_month):
+    # World map itself
     fig = px.scatter_geo(
         filtered_df,
         locations="location",
@@ -55,13 +50,13 @@ def main():
         color_discrete_sequence=["skyblue"],  
         hover_name="location",
         hover_data={
-            "new_cases_filled": ":,.0f",  
-            "new_cases_log": False,
+            "new_cases_per_month": ":,.0f",  
+            "cases_size": False,
         },
-        size="circle_size",  
-        projection="natural earth",
+        size="cases_size",
+        projection="mercator",
         title=f"COVID-19 New Cases for {selected_month.strftime('%B %Y')}",
-        size_max=40  
+        size_max=150,
     )
 
     fig.update_geos(
@@ -80,46 +75,41 @@ def main():
         color="skyblue"  
     ))
 
-    circle_legend = {
-        "2": "0-1,000 new cases",
-        "5": "1,001-10,000 new cases",
-        "15": "10,001-50,000 new cases",
-        "30": "50,001+ new cases"
-    }
-
     fig.update_layout(
         height=900,  
         margin={"r": 0, "t": 50, "l": 0, "b": 0},  
         geo=dict(
             showframe=False,
             showcoastlines=True,
-        ),
-        legend=dict(
-            title="Circle Size Legend",  
-            itemsizing="constant",
-            traceorder="normal"
         )
     )
 
-    for size, label in circle_legend.items():
-        fig.add_trace(
-            go.Scattergeo(
-                lon=[None],  
-                lat=[None],  
-                mode="markers",
-                marker=dict(size=int(size), color="skyblue", sizemode='area'),
-                name=label
-            )
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.subheader(f"New Cases Data for {selected_month.strftime('%B %Y')}")
-        
-    st.dataframe(filtered_df[['location', 'new_cases_filled']].sort_values('new_cases_filled', ascending=False))
-    st.subheader("Summary Statistics")
-    st.write(f"Total New Cases: {filtered_df['new_cases_filled'].sum():,.0f}")
-    st.write(f"Average New Cases per Country: {filtered_df['new_cases_filled'].mean():,.2f}")
-    st.write(f"Median New Cases: {filtered_df['new_cases_filled'].median():,.0f}")
-    st.write(f"Maximum New Cases: {filtered_df['new_cases_filled'].max():,.0f}")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def main():
+    st.set_page_config(layout="wide")
+    st.title("COVID-19 Monthly New Cases World Map")
+
+    # 1. Import Data
+    covid_df = load_data()
+
+    # 2. Set up preliminary variables
+    min_month = covid_df['month'].min().date().replace(day=1)
+    max_month = covid_df['month'].max().date().replace(day=1)
+
+    # 3. Show slider, the main component of our page
+    selected_month = setup_slider(min_month, max_month)
+
+    # 4. Create filetered DataFrame based on the month selected with the slider
+    filtered_df = covid_df[covid_df['month'].dt.to_period('M') == pd.Period(selected_month, freq='M')]
+    filtered_df['new_cases_per_month'] = filtered_df['new_cases'].fillna(0)
+    filtered_df['cases_size'] = (filtered_df['new_cases_per_month'] / 200_000) * 20
+
+    # 5. Show main map + summary data at the end of the page
+    main_map(filtered_df, selected_month)
+    summary_data(filtered_df, selected_month)
+
 
 if __name__ == "__main__":
     main()
