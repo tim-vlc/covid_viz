@@ -4,8 +4,17 @@ import plotly.express as px
 import numpy as np
 import plotly.graph_objects as go
 
+########################################################################
+# Main file consisting of the streamlit app showing a dashboard of the #
+# evolution of new cases by country from January 2020 until August '24 #
+########################################################################
+
 @st.cache_data
 def load_data():
+    """
+    Loading covid data and aggregating the relevant numbers per month and per quarter
+    """
+
     df = pd.read_csv("owid-covid-data.csv")
     df['date'] = pd.to_datetime(df['date'])
     
@@ -20,8 +29,31 @@ def load_data():
     
     return monthly_df, quarterly_df
 
+def filter_data(df, selected_month):
+    """
+    Correctly filter data that is needed based on selected month.
+    """
+    countries_to_exclude = [
+        'Asia', 'Europe', 'North America', 'World',
+        'South America', 'Africa', 'Oceania', 'European Union (27)',
+        'Upper-middle-income countries', 'Lower-middle-income countries', "High-income countries"
+    ]
+
+    filtered_df = df[~df["location"].isin(countries_to_exclude)].copy()
+
+    filtered_df = filtered_df[filtered_df['month'].dt.to_period('M') == pd.Period(selected_month, freq='M')]
+    filtered_df['new_cases_per_month'] = filtered_df['new_cases'].fillna(0)
+    filtered_df['cases_size'] = (filtered_df['new_cases_per_month'] / 200_000) * 20
+
+    return filtered_df
+
+
 
 def setup_slider(min_month, max_month):
+    """
+    slider for the user to play around with the viz.
+    """
+
     selected_month = st.slider(
         "Select a month",
         min_value=min_month,
@@ -34,9 +66,10 @@ def setup_slider(min_month, max_month):
 
 
 def summary_data(filtered_df, selected_month):
-    # Dashboard for showing summary data
-    st.subheader(f"New Cases Data for {selected_month.strftime('%B %Y')}")
-    st.dataframe(filtered_df[['location', 'new_cases_per_month']].sort_values('new_cases_per_month', ascending=False))
+    """
+    Sets up small summary statistics of the data on a selected month.
+    """
+
     st.subheader("Summary Statistics")
     st.write(f"Total New Cases: {filtered_df['new_cases_per_month'].sum():,.0f}")
     st.write(f"Average New Cases per Country: {filtered_df['new_cases_per_month'].mean():,.2f}")
@@ -45,7 +78,10 @@ def summary_data(filtered_df, selected_month):
 
 
 def main_map(filtered_df, selected_month):
-    # World map itself
+    """
+    Show world map with circles proportional to new cases in a selected month per country.
+    """
+
     fig = px.scatter_geo(
         filtered_df,
         locations="location",
@@ -59,7 +95,7 @@ def main_map(filtered_df, selected_month):
         size="cases_size",
         projection="mercator",
         title=f"COVID-19 New Cases for {selected_month.strftime('%B %Y')}",
-        size_max=150,
+        size_max=40,
     )
 
     fig.update_geos(
@@ -91,13 +127,11 @@ def main_map(filtered_df, selected_month):
 
 
 def bar_plot(filtered_df):
-    countries_to_exclude = [
-        'World', 'Asia', 'Europe', 'North America', 
-        'South America', 'Africa', 'Oceania', 'European Union (27)',
-        'Upper-middle-income countries', 'Lower-middle-income countries', "High-income countries"
-    ]
-    sorted_df = filtered_df[~filtered_df['location'].isin(countries_to_exclude)].sort_values('new_cases_per_month', ascending=False)
-    
+    """
+    Build a bar plot of the 10 countries with the highest # of new cases.
+    """
+
+    sorted_df = filtered_df.sort_values('new_cases_per_month', ascending=False)
     top_10_df = sorted_df.head(10)
     
     fig = go.Figure(go.Bar(
@@ -127,36 +161,54 @@ def bar_plot(filtered_df):
     return fig
 
 
-def histogram(quarterly):
-    fig_histogram = px.bar(quarterly, x='quarter', y='new_cases', labels={'new_cases': 'New Cases (Thousands)'}, 
-                        title="Quarterly Evolution of Positive Cases Globaly.", color_discrete_sequence=['skyblue'])
-    fig_histogram.update_layout(yaxis_title='New Cases (Thousands)', yaxis=dict(tickformat=".0f"))
+def histogram(df):
+    """
+    Build histogram of country quarterly # of new cases, depending on selected country.
+    """
+    
+    countries_to_exclude = [
+        'World', 'Asia', 'Europe', 'North America', 
+        'South America', 'Africa', 'Oceania', 'European Union (27)',
+        'Upper-middle-income countries', 'Lower-middle-income countries', "High-income countries"
+    ]
 
-    quarterly['new_cases'] = quarterly['new_cases'] / 1000 # scale to thousands
+    # Dropdown selection for the histogram
+    country_list = ['The World'] + sorted(df[~df['location'].isin(countries_to_exclude)]['location'].unique().tolist())
+    selected_country = st.selectbox("Select a country", country_list)
+
+    # Filter based on country selection by user
+    filtered_df = df.copy() if selected_country=="The World" else df[df["location"] == selected_country].copy()
+    filtered_df['new_cases'] = filtered_df['new_cases'] / 1000 # scale to thousands
+
+    fig_histogram = px.bar(filtered_df, x='quarter', y='new_cases', labels={'new_cases': 'New Cases (Thousands)'}, 
+                        title=f"Quarterly Evolution of Positive Cases {' for ' + selected_country if selected_country != 'The World' else ''}.", color_discrete_sequence=['skyblue'])
+    fig_histogram.update_layout(yaxis_title='New Cases (Thousands)', yaxis=dict(tickformat=".0f"))
 
     return fig_histogram
 
 
 def main():
+    """
+    The main function which is called when the streamlit command is run, the exposed port is 8501 (default).
+    """
+
     st.set_page_config(layout="wide")
     st.title("COVID-19 Monthly New Cases World Map")
 
     # 1. Import Data
-    covid_df, quarterly_df = load_data()
+    monthly_df, quarterly_df = load_data()
 
     # 2. Set up preliminary variables
-    min_month = covid_df['month'].min().date().replace(day=1)
-    max_month = covid_df['month'].max().date().replace(day=1)
+    min_month = monthly_df['month'].min().date().replace(day=1)
+    max_month = monthly_df['month'].max().date().replace(day=1)
 
     # 3. Show slider, the main component of our page
     selected_month = setup_slider(min_month, max_month)
 
     # 4. Create filetered DataFrame based on the month selected with the slider
-    filtered_df = covid_df[covid_df['month'].dt.to_period('M') == pd.Period(selected_month, freq='M')]
-    filtered_df['new_cases_per_month'] = filtered_df['new_cases'].fillna(0)
-    filtered_df['cases_size'] = (filtered_df['new_cases_per_month'] / 200_000) * 20
+    filtered_df = filter_data(monthly_df, selected_month).copy()
 
-    # 5. Show main map in the left column + Show bar plot in the right column
+    # 5. Show main map in the left column + Show bar plot and histgoram in the right column
     col1, col2 = st.columns([2, 1])
     with col1:
         main_map(filtered_df, selected_month)
