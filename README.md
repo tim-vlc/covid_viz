@@ -9,8 +9,10 @@ The visualization was heavily inspired from a [TableauⒸ visualization on the s
 - A Summary Menu is found at the bottom of the visualization.
 
 ## Installation
-1. Clone the repository in a working directory on your machine: `git clone https://github.com/tim-vlc/covid_viz`,
-2. Then, build the docker image: `cd covid_viz | docker build -t covid_viz .`,
+**Warning** The commands need to be run on a terminal on your machine. If you do not have `Docker` or `Git` installed, please follow the following guides for [Docker](https://docs.docker.com/engine/install/) and [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
+
+1. Clone the repository in a working directory on your machine: `git clone https://github.com/tim-vlc/covid_viz.git`,
+2. Then, build the docker image: `cd covid_viz && docker build -t covid_viz .`,
 3. Now, run the container using the following command: `docker run -p 8501:8501 covid_viz`,
-4. Head to the following page on your browser: `http://localhost:8501`,
+4. Head to the following page on your browser: [`http://localhost:8501`](http://localhost:8501),
 5. And voilà! All done, you can play around with the viz.
